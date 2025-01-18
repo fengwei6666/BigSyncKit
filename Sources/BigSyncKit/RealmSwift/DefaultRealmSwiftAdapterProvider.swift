@@ -77,12 +77,12 @@ public class DefaultRealmSwiftAdapterProvider: NSObject, AdapterProvider {
         } else {
             rootDirectory = applicationDocumentsDirectory()
         }
-        return rootDirectory?.appending("/BigSyncKit")
+        return rootDirectory?.appending("/com.dayday.realm")
     }
     
     fileprivate static func applicationDocumentsDirectory() -> String? {
 #if os(iOS)
-        return NSSearchPathForDirectoriesInDomains(.libraryDirectory, .userDomainMask, true).last
+        return NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true).last
 #elseif os(macOS)
         let urls = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
         //        return urls.last?.appendingPathComponent("com.lake-of-fire.BigSyncKit").path

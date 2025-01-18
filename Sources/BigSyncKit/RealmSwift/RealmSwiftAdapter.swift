@@ -19,6 +19,7 @@ import Combine
 import RealmSwiftGaps
 import Algorithms
 import AsyncAlgorithms
+import IceCream
 
 //extension Realm {
 //    public func safeWrite(_ block: (() throws -> Void)) throws {
@@ -1100,12 +1101,26 @@ public class RealmSwiftAdapter: NSObject, ModelAdapter {
             let objectIdentifier = String(recordName[separatorRange.upperBound...])
             savePendingRelationshipAsync(name: key, syncedEntityID: syncedEntityIdentifier, targetIdentifier: objectIdentifier)
         } else if property.type == .object {
-            // Save relationship to be applied after all records have been downloaded and persisted
-            // to ensure target of the relationship has already been created
-            guard let recordName = record.value(forKey: property.name) as? String else { return }
-            let separatorRange = recordName.range(of: ".")!
-            let objectIdentifier = String(recordName[separatorRange.upperBound...])
-            savePendingRelationshipAsync(name: key, syncedEntityID: syncedEntityIdentifier, targetIdentifier: objectIdentifier)
+            if property.objectClassName == CreamAsset.className() {
+                if let asset = record.value(forKey: property.name) as? CKAsset {
+                    var fileName = property.name
+                    if let fn = record.value(forKey: "uniqueFileName") as? String {
+                        let arr = fn.components(separatedBy: "_")
+                        if arr.count == 2 {
+                            fileName = arr[1]
+                        }
+                    }
+                    recordValue = CreamAsset.parse(from: fileName, record: record, asset: asset)
+                    object.setValue(recordValue, forKey: property.name)
+                }
+            } else {
+                // Save relationship to be applied after all records have been downloaded and persisted
+                // to ensure target of the relationship has already been created
+                guard let recordName = record.value(forKey: property.name) as? String else { return }
+                let separatorRange = recordName.range(of: ".")!
+                let objectIdentifier = String(recordName[separatorRange.upperBound...])
+                savePendingRelationshipAsync(name: key, syncedEntityID: syncedEntityIdentifier, targetIdentifier: objectIdentifier)
+            }
         } else if let asset = value as? CKAsset {
             if let fileURL = asset.fileURL,
                let data = NSData(contentsOf: fileURL) {
@@ -1344,7 +1359,12 @@ public class RealmSwiftAdapter: NSObject, ModelAdapter {
                 }
                 
                 if property.type == PropertyType.object {
-                    if let target = object.value(forKey: property.name) as? Object {
+                    if let objectName = property.objectClassName, objectName == CreamAsset.className(), let creamAsset = object[property.name] as? CreamAsset {
+                        // If object is CreamAsset, set record with its wrapped CKAsset value
+                        record[property.name] = creamAsset.asset
+                        record["uniqueFileName"] = creamAsset.uniqueFileName
+                        
+                    } else if let target = object.value(forKey: property.name) as? Object {
                         let targetPrimaryKey = (type(of: target).primaryKey() ?? target.objectSchema.primaryKeyProperty?.name)!
                         let targetIdentifier = Self.getStringIdentifier(for: target, usingPrimaryKey: targetPrimaryKey)
                         let referenceIdentifier = "\(property.objectClassName!).\(targetIdentifier)"
