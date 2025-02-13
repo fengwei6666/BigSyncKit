@@ -88,12 +88,15 @@ class FetchZoneChangesOperation: CloudKitSynchronizerOperation {
             zoneOptions[zoneID] = options
         }
         
+        
+        debugPrint("QSCloudKitSynchronizer >> start fetch zones: \(zones.map { $0.zoneName })")
         let operation = CKFetchRecordZoneChangesOperation(recordZoneIDs: zones, optionsByRecordZoneID: zoneOptions)
         operation.fetchAllChanges = true
         
         operation.recordChangedBlock = { record in
             let ignoreDeviceIdentifier: String = self.ignoreDeviceIdentifier ?? " "
-            
+            debugPrint("QSCloudKitSynchronizer >> did fetch record: \(record.recordID.recordName) == \(record.recordType)")
+
             if ignoreDeviceIdentifier != record[CloudKitSynchronizer.deviceUUIDKey] as? String {
                 if let version = record[CloudKitSynchronizer.modelCompatibilityVersionKey] as? Int,
                    self.modelVersion > 0 && version > self.modelVersion {
@@ -110,6 +113,8 @@ class FetchZoneChangesOperation: CloudKitSynchronizerOperation {
         }
         
         operation.recordWithIDWasDeletedBlock = { recordID, recordType in
+            debugPrint("QSCloudKitSynchronizer >> was deleted record: \(recordID.recordName) == \(recordType)")
+
             Task { @MainActor [weak self] in
                 guard let self = self else { return }
                 zoneResults[recordID.zoneID]?.deletedRecordIDs.append(recordID)

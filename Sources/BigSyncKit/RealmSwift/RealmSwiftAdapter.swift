@@ -1,4 +1,4 @@
-//
+    //
 //  RealmSwiftAdapter.swift
 //  Pods
 //
@@ -19,6 +19,7 @@ import Combine
 import RealmSwiftGaps
 import Algorithms
 import AsyncAlgorithms
+import IceCream
 
 //extension Realm {
 //    public func safeWrite(_ block: (() throws -> Void)) throws {
@@ -501,8 +502,8 @@ public class RealmSwiftAdapter: NSObject, ModelAdapter {
         }
         
         let lastTrackedChangesAt = syncedEntityType.lastTrackedChangesAt ?? .distantPast
-        let createdPredicate = NSPredicate(format: "createdAt > %@", lastTrackedChangesAt as NSDate)
-        let modifiedPredicate = NSPredicate(format: "modifiedAt > %@", lastTrackedChangesAt as NSDate)
+        let createdPredicate = NSPredicate(format: "createDate > %@", lastTrackedChangesAt as NSDate)
+        let modifiedPredicate = NSPredicate(format: "lastModify > %@", lastTrackedChangesAt as NSDate)
         let nextTrackedChangesAt = Date()
         
         let created = Array(targetReaderRealm.objects(objectClass).filter(createdPredicate))
@@ -893,7 +894,7 @@ public class RealmSwiftAdapter: NSObject, ModelAdapter {
     func applyChanges(in record: CKRecord, to object: Object, syncedEntityID: String, syncedEntityState: SyncedEntityState, entityType: String) {
         let objectProperties = object.objectSchema.properties
         
-        if syncedEntityState == .newOrChanged || syncedEntityState == .new || syncedEntityState == .changed {
+        if syncedEntityState == .new || syncedEntityState == .changed {
             if mergePolicy == .server {
                 for property in objectProperties {
                     if shouldIgnore(key: property.name) {
@@ -1100,12 +1101,26 @@ public class RealmSwiftAdapter: NSObject, ModelAdapter {
             let objectIdentifier = String(recordName[separatorRange.upperBound...])
             savePendingRelationshipAsync(name: key, syncedEntityID: syncedEntityIdentifier, targetIdentifier: objectIdentifier)
         } else if property.type == .object {
-            // Save relationship to be applied after all records have been downloaded and persisted
-            // to ensure target of the relationship has already been created
-            guard let recordName = record.value(forKey: property.name) as? String else { return }
-            let separatorRange = recordName.range(of: ".")!
-            let objectIdentifier = String(recordName[separatorRange.upperBound...])
-            savePendingRelationshipAsync(name: key, syncedEntityID: syncedEntityIdentifier, targetIdentifier: objectIdentifier)
+            if property.objectClassName == CreamAsset.className() {
+                if let asset = record.value(forKey: property.name) as? CKAsset {
+                    var fileName = property.name
+                    if let fn = record.value(forKey: "uniqueFileName") as? String {
+                        let arr = fn.components(separatedBy: "_")
+                        if arr.count == 2 {
+                            fileName = arr[1]
+                        }
+                    }
+                    recordValue = CreamAsset.parse(from: fileName, record: record, asset: asset)
+                    object.setValue(recordValue, forKey: property.name)
+                }
+            } else {
+                // Save relationship to be applied after all records have been downloaded and persisted
+                // to ensure target of the relationship has already been created
+                guard let recordName = record.value(forKey: property.name) as? String else { return }
+                let separatorRange = recordName.range(of: ".")!
+                let objectIdentifier = String(recordName[separatorRange.upperBound...])
+                savePendingRelationshipAsync(name: key, syncedEntityID: syncedEntityIdentifier, targetIdentifier: objectIdentifier)
+            }
         } else if let asset = value as? CKAsset {
             if let fileURL = asset.fileURL,
                let data = NSData(contentsOf: fileURL) {
@@ -1282,7 +1297,7 @@ public class RealmSwiftAdapter: NSObject, ModelAdapter {
     }
     
     func recordsToUpload(withState state: SyncedEntityState, limit: Int, syncRealmProvider: SyncRealmProvider) -> [CKRecord] {
-        let results = syncRealmProvider.syncPersistenceRealm.objects(SyncedEntity.self).where { $0.state == state.rawValue }
+        let results = syncRealmProvider.syncPersistenceRealm.objects(SyncedEntity.self).where { $0.state == state.rawValue || $0.state >= SyncedEntityState.new.rawValue }
         var resultArray = [CKRecord]()
         var includedEntityIDs = Set<String>()
         for syncedEntity in results {
@@ -1337,27 +1352,19 @@ public class RealmSwiftAdapter: NSObject, ModelAdapter {
 //        }
         
         for property in object.objectSchema.properties {
-            if entityState == SyncedEntityState.newOrChanged.rawValue || entityState == SyncedEntityState.new.rawValue || entityState == SyncedEntityState.changed.rawValue {
+            if entityState == SyncedEntityState.new.rawValue || entityState == SyncedEntityState.changed.rawValue {
                 if let recordProcessingDelegate = recordProcessingDelegate,
                    !recordProcessingDelegate.shouldProcessPropertyBeforeUpload(propertyName: property.name, object: object, record: record) {
                     continue
                 }
                 
-                if property.type == PropertyType.object {
-                    if let target = object.value(forKey: property.name) as? Object {
-                        let targetPrimaryKey = (type(of: target).primaryKey() ?? target.objectSchema.primaryKeyProperty?.name)!
-                        let targetIdentifier = Self.getStringIdentifier(for: target, usingPrimaryKey: targetPrimaryKey)
-                        let referenceIdentifier = "\(property.objectClassName!).\(targetIdentifier)"
-                        let recordID = CKRecord.ID(recordName: referenceIdentifier, zoneID: zoneID)
-                        record[property.name] = recordID.recordName as CKRecordValue
-                    }
-                } else if property.isSet {
+                if property.isSet {
                     let value = object.value(forKey: property.name)
                     switch property.type {
                     case .object:
                         /// We may get MutableSet<Cat> here
                         /// The item cannot be casted as MutableSet<Object>
-                        /// It can be casted at a low-level type `SetBase`
+                        /// It can be casted at a low-level type `SetBase`//**********
                         /// Updated -- see: https://github.com/caiyue1993/IceCream/pull/256#issuecomment-1034336992
                         guard let set = value as? RLMSwiftCollectionBase, set._rlmCollection.count > 0 else { break }
                         var referenceArray = [String]()
@@ -1417,7 +1424,7 @@ public class RealmSwiftAdapter: NSObject, ModelAdapter {
                         let wrappedArray = list._rlmCollection
                         for index in 0..<wrappedArray.count {
                             guard let object = wrappedArray[index] as? Object, let targetPrimaryKey = (type(of: object).primaryKey() ?? object.objectSchema.primaryKeyProperty?.name) else { continue }
-                            #warning("Confirm here that isDeleted is false before referencing, as icecream does (link above)")
+#warning("Confirm here that isDeleted is false before referencing, as icecream does (link above)")
                             let targetIdentifier = Self.getStringIdentifier(for: object, usingPrimaryKey: targetPrimaryKey)
                             let referenceIdentifier = "\(property.objectClassName!).\(targetIdentifier)"
                             let recordID = CKRecord.ID(recordName: referenceIdentifier, zoneID: zoneID)
@@ -1455,6 +1462,19 @@ public class RealmSwiftAdapter: NSObject, ModelAdapter {
                     default:
                         // Other inner types of List is not supported yet
                         break
+                    }
+                } else if property.type == PropertyType.object {
+                    if let objectName = property.objectClassName, objectName == CreamAsset.className(), let creamAsset = object[property.name] as? CreamAsset {
+                        // If object is CreamAsset, set record with its wrapped CKAsset value
+                        record[property.name] = creamAsset.asset
+                        record["uniqueFileName"] = creamAsset.uniqueFileName
+                        
+                    } else if let target = object.value(forKey: property.name) as? Object {
+                        let targetPrimaryKey = (type(of: target).primaryKey() ?? target.objectSchema.primaryKeyProperty?.name)!
+                        let targetIdentifier = Self.getStringIdentifier(for: target, usingPrimaryKey: targetPrimaryKey)
+                        let referenceIdentifier = "\(property.objectClassName!).\(targetIdentifier)"
+                        let recordID = CKRecord.ID(recordName: referenceIdentifier, zoneID: zoneID)
+                        record[property.name] = recordID.recordName as CKRecordValue
                     }
                 } else if (
                     property.type != PropertyType.linkingObjects &&
@@ -1741,7 +1761,7 @@ public class RealmSwiftAdapter: NSObject, ModelAdapter {
         guard let syncRealmProvider = syncRealmProvider else { return [] }
         var recordsArray = [CKRecord]()
         let recordLimit = limit == 0 ? Int.max : limit
-        var uploadingState = SyncedEntityState.newOrChanged
+        var uploadingState = SyncedEntityState.new
         
         var innerLimit = recordLimit
         while recordsArray.count < recordLimit && uploadingState.rawValue < SyncedEntityState.deleted.rawValue {

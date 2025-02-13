@@ -42,5 +42,6 @@ TODO: Add long description of the pod here.
   s.dependency 'SwiftAlgorithms', '~> 1.0.0'
   s.dependency 'AsyncAlgorithms', '~> 0.1.0'
   s.dependency 'RealmSwiftGaps'
-
+  s.dependency 'IceCream'
+  
 end
