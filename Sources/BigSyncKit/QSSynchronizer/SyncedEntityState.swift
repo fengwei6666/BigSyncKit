@@ -8,9 +8,9 @@
 import Foundation
 
 enum SyncedEntityState: Int {
-    case new = 0
-    case changed
-    case deleted
-    case synced
-    case inserted
+    // Order of the raw values is significant; see recordsToUpload and nextStateToSync
+    case new = 1
+    case changed = 2
+    case deleted = 3
+    case synced = 4
 }
