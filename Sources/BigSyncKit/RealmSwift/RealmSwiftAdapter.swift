@@ -19,6 +19,7 @@ import Combine
 import RealmSwiftGaps
 import Algorithms
 import AsyncAlgorithms
+import IceCream
 
 //extension Realm {
 //    public func safeWrite(_ block: (() throws -> Void)) throws {
@@ -510,8 +511,8 @@ public class RealmSwiftAdapter: NSObject, ModelAdapter {
         }
         
         let lastTrackedChangesAt = syncedEntityType.lastTrackedChangesAt ?? .distantPast
-        let createdPredicate = NSPredicate(format: "createdAt > %@", lastTrackedChangesAt as NSDate)
-        let modifiedPredicate = NSPredicate(format: "modifiedAt > %@", lastTrackedChangesAt as NSDate)
+        let createdPredicate = NSPredicate(format: "createDate > %@", lastTrackedChangesAt as NSDate)
+        let modifiedPredicate = NSPredicate(format: "lastModify > %@", lastTrackedChangesAt as NSDate)
         let nextTrackedChangesAt = Date()
         
         let created = Array(targetReaderRealm.objects(objectClass).filter(createdPredicate))
@@ -982,7 +983,7 @@ public class RealmSwiftAdapter: NSObject, ModelAdapter {
 #else
                         guard adapter.hasRealmObjectClass(name: String(describing: type(of: object))) else { return false }
 #endif
-                        if let remoteChangeAt = changes["modifiedAt"] as? Date, let localChangeAt = object.value(forKey: "modifiedAt") as? Date, remoteChangeAt <= localChangeAt {
+                        if let remoteChangeAt = changes["lastModify"] as? Date, let localChangeAt = object.value(forKey: "lastModify") as? Date, remoteChangeAt <= localChangeAt {
                             return false
                         }
                         return true
@@ -1155,10 +1156,23 @@ public class RealmSwiftAdapter: NSObject, ModelAdapter {
         } else if property.type == .object {
             // Save relationship to be applied after all records have been downloaded and persisted
             // to ensure target of the relationship has already been created
-            guard let recordName = record.value(forKey: property.name) as? String else { return }
-            let separatorRange = recordName.range(of: ".")!
-            let objectIdentifier = String(recordName[separatorRange.upperBound...])
-            savePendingRelationshipAsync(name: key, syncedEntityID: syncedEntityIdentifier, targetIdentifier: objectIdentifier)
+            // by wei.feng 兼容 icecream 的  creamAsset
+            if property.objectClassName == CreamAsset.className(), let asset = record.value(forKey: property.name) as? CKAsset {
+                var fileName = property.name
+                if let fn = record.value(forKey: "uniqueFileName") as? String {
+                    let arr = fn.components(separatedBy: "_")
+                    if arr.count == 2 {
+                        fileName = arr[1]
+                    }
+                }
+                recordValue = CreamAsset.parse(from: fileName, record: record, asset: asset)
+                object.setValue(recordValue, forKey: property.name)
+            } else {
+                guard let recordName = record.value(forKey: property.name) as? String else { return }
+                let separatorRange = recordName.range(of: ".")!
+                let objectIdentifier = String(recordName[separatorRange.upperBound...])
+                savePendingRelationshipAsync(name: key, syncedEntityID: syncedEntityIdentifier, targetIdentifier: objectIdentifier)
+            }
         } else if let asset = value as? CKAsset {
             if let fileURL = asset.fileURL,
                let data = NSData(contentsOf: fileURL) {
@@ -1255,14 +1269,16 @@ public class RealmSwiftAdapter: NSObject, ModelAdapter {
             guard let originObject = realmProvider.targetReaderRealm?.object(ofType: originObjectClass, forPrimaryKey: objectIdentifier) else { continue }
             
             var targetClassName: String?
+            var relationShipProperty: Property?
             for property in originObject.objectSchema.properties {
                 if property.name == relationship.relationshipName {
                     targetClassName = property.objectClassName
+                    relationShipProperty = property
                     break
                 }
             }
             
-            guard let className = targetClassName else {
+            guard let className = targetClassName, let relationShipProperty = relationShipProperty else {
                 continue
             }
             
@@ -1282,7 +1298,16 @@ public class RealmSwiftAdapter: NSObject, ModelAdapter {
                 if let originObject = targetWriterRealm.resolve(originRef) {
                     await targetWriterRealm.asyncRefresh()
                     try await targetWriterRealm.asyncWrite {
-                        originObject.setValue(targetObject, forKey: relationshipName)
+                        if relationShipProperty.isArray, let list = originObject.value(forKey: relationshipName) {
+                            (list as AnyObject).perform(#selector(NSMutableArray.add(_:)), with: targetObject)
+//                            if let list = list as? List<RealmSwiftObject> {
+//                                list.append(targetObject)
+//                            }
+                            
+                        } else {
+                            originObject.setValue(targetObject, forKey: relationshipName)
+                        }
+                        
                     }
                 }
                 return true
@@ -1374,15 +1399,7 @@ public class RealmSwiftAdapter: NSObject, ModelAdapter {
                     continue
                 }
                 
-                if property.type == PropertyType.object {
-                    if let target = object.value(forKey: property.name) as? Object {
-                        let targetPrimaryKey = (type(of: target).primaryKey() ?? target.objectSchema.primaryKeyProperty?.name)!
-                        let targetIdentifier = Self.getTargetObjectStringIdentifier(for: target, usingPrimaryKey: targetPrimaryKey)
-                        let referenceIdentifier = "\(property.objectClassName!).\(targetIdentifier)"
-                        let recordID = CKRecord.ID(recordName: referenceIdentifier, zoneID: zoneID)
-                        record[property.name] = recordID.recordName as CKRecordValue
-                    }
-                } else if property.isSet {
+                if property.isSet {
                     let value = object.value(forKey: property.name)
                     switch property.type {
                     case .object:
@@ -1486,6 +1503,21 @@ public class RealmSwiftAdapter: NSObject, ModelAdapter {
                     default:
                         // Other inner types of List is not supported yet
                         break
+                    }
+                } else if property.type == PropertyType.object {
+                    if let target = object.value(forKey: property.name) as? Object {
+                        
+                        if let creamAsset = object[property.name] as? CreamAsset {
+                            // If object is CreamAsset, set record with its wrapped CKAsset value
+                            record[property.name] = creamAsset.asset
+                            record["uniqueFileName"] = creamAsset.uniqueFileName
+                        } else {
+                            let targetPrimaryKey = (type(of: target).primaryKey() ?? target.objectSchema.primaryKeyProperty?.name)!
+                            let targetIdentifier = Self.getTargetObjectStringIdentifier(for: target, usingPrimaryKey: targetPrimaryKey)
+                            let referenceIdentifier = "\(property.objectClassName!).\(targetIdentifier)"
+                            let recordID = CKRecord.ID(recordName: referenceIdentifier, zoneID: zoneID)
+                            record[property.name] = recordID.recordName as CKRecordValue
+                        }
                     }
                 } else if (
                     property.type != PropertyType.linkingObjects &&
