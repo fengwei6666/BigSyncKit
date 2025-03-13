@@ -512,7 +512,7 @@ public class RealmSwiftAdapter: NSObject, ModelAdapter {
         
         let lastTrackedChangesAt = syncedEntityType.lastTrackedChangesAt ?? .distantPast
         let createdPredicate = NSPredicate(format: "createDate > %@", lastTrackedChangesAt as NSDate)
-        let modifiedPredicate = NSPredicate(format: "lastModify > %@", lastTrackedChangesAt as NSDate)
+        let modifiedPredicate = NSPredicate(format: "lastModify > %@ AND createDate <= %@", lastTrackedChangesAt as NSDate, lastTrackedChangesAt as NSDate)
         let nextTrackedChangesAt = Date()
         
         let created = Array(targetReaderRealm.objects(objectClass).filter(createdPredicate))
@@ -679,6 +679,10 @@ public class RealmSwiftAdapter: NSObject, ModelAdapter {
                     // If state was New (or Modified already) then leave it as that
                 }
             }
+        }
+        
+        if !isNewChange, inserted, let syncedEntity = syncedEntity {
+            syncedEntity.state = SyncedEntityState.synced.rawValue
         }
         
         let isNewChangeFinal = isNewChange
