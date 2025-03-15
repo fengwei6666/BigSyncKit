@@ -44,6 +44,7 @@ public class SyncStatusViewModel: ObservableObject {
     @Published public var syncFailed = false
     @Published public var currentDeviceID: UUID?
     @Published public var lastSeenDevices: [LastSeenDevice]?
+    @Published public var inSyncing = false
     
     public var bigSyncBackgroundWorker: BigSyncBackgroundWorker?
 
@@ -58,6 +59,7 @@ public class SyncStatusViewModel: ObservableObject {
                 syncStatus = "Preparing to Synchronize"
                 syncFailed = false
                 syncBegan()
+                inSyncing = true
             }
             .store(in: &cancellables)
         
@@ -66,6 +68,7 @@ public class SyncStatusViewModel: ObservableObject {
                 guard let self = self else { return }
                 syncStatus = "Fetching Changes"
                 syncFailed = false
+                inSyncing = true
             }
             .store(in: &cancellables)
         
@@ -74,6 +77,7 @@ public class SyncStatusViewModel: ObservableObject {
                 guard let self = self else { return }
                 syncStatus = "Uploading Changes"
                 syncFailed = false
+                inSyncing = true
             }
             .store(in: &cancellables)
         
@@ -82,6 +86,7 @@ public class SyncStatusViewModel: ObservableObject {
                 guard let self = self else { return }
                 syncStatus = "Synchronization Completed"
                 syncFailed = false
+                inSyncing = false
                 syncIsOver()
             }
             .store(in: &cancellables)
@@ -118,6 +123,7 @@ public class SyncStatusViewModel: ObservableObject {
                         syncStatus = "Synchronization Failed: Unknown Error"
                     }
                     self.syncFailed = syncFailed
+                    inSyncing = false
                     syncIsOver()
                 }
             }

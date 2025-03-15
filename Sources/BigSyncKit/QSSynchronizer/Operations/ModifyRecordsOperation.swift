@@ -35,6 +35,8 @@ class ModifyRecordsOperation: CloudKitSynchronizerOperation {
     weak var internalOperation: CKModifyRecordsOperation?
         
     override func start() {
+        debugPrint("====== ckrecord will modify: \(records)")
+
         let operation = CKModifyRecordsOperation(recordsToSave: records, recordIDsToDelete: recordIDsToDelete)
         
         operation.perRecordCompletionBlock = { record, error in
@@ -55,7 +57,7 @@ class ModifyRecordsOperation: CloudKitSynchronizerOperation {
     /// Handles errors from both perRecordCompletionBlock and modifyRecordsCompletionBlock
     private func processError(_ error: Error?, recordID: CKRecord.ID) {
         guard let error = error as? CKError else { return }
-        
+        debugPrint("====== ckrecord modify error: \(error) === \(recordID)")
         switch error.code {
         case .serverRecordChanged:
             if let serverRecord = error.userInfo[CKRecordChangedErrorServerRecordKey] as? CKRecord {
