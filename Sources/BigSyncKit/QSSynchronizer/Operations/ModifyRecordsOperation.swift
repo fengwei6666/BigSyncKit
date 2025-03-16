@@ -38,7 +38,8 @@ class ModifyRecordsOperation: CloudKitSynchronizerOperation {
         debugPrint("====== ckrecord will modify: \(records)")
 
         let operation = CKModifyRecordsOperation(recordsToSave: records, recordIDsToDelete: recordIDsToDelete)
-        
+        operation.savePolicy = .changedKeys
+        operation.isAtomic = true
         operation.perRecordCompletionBlock = { record, error in
             self.processError(error, recordID: record.recordID)
         }
