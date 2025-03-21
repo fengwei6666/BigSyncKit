@@ -21,6 +21,8 @@ public extension Notification.Name {
     static let SynchronizerDidSynchronize = Notification.Name("QSCloudKitSynchronizerDidSynchronizeNotification")
     /// Sent when the synchronizer encounters an error while syncing.
     static let SynchronizerDidFailToSynchronize = Notification.Name("QSCloudKitSynchronizerDidFailToSynchronizeNotification")
+    
+    static let SynchronizerDidFetchRecord = Notification.Name("QSCloudKitSynchronizerDidFetchRecordNotification")
 }
 
 // For Obj-C
@@ -204,6 +206,8 @@ public class CloudKitSynchronizer: NSObject {
         return _deviceIdentifier
     }
     
+    public var forceSaveRecordOnce = false
+    
     internal func clearDeviceIdentifier() {
         deviceUUID = nil
     }
@@ -221,6 +225,7 @@ public class CloudKitSynchronizer: NSObject {
                 try await adapter.resetSyncCaches()
             }
         }
+        forceSaveRecordOnce = true
     }
     
     // MARK: - Public

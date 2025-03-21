@@ -950,7 +950,8 @@ public class RealmSwiftAdapter: NSObject, ModelAdapter {
     @RealmBackgroundActor
     func applyChanges(in record: CKRecord, to object: Object, syncedEntityID: String, syncedEntityState: SyncedEntityState, entityType: String) {
         let objectProperties = object.objectSchema.properties
-        
+        debugPrint("QSCloudKitSynchronizer >> apply changes for record: \(record.recordID.recordName) === \(syncedEntityState.rawValue) ==")
+
         if syncedEntityState == .new || syncedEntityState == .changed {
             if mergePolicy == .server {
                 for property in objectProperties {
@@ -1701,16 +1702,25 @@ public class RealmSwiftAdapter: NSObject, ModelAdapter {
         }
         
         if !recordsToSave.isEmpty {
+            debugPrint("QSCloudKitSynchronizer >> save changes for record: \(recordsToSave.count)")
+            
             for chunk in recordsToSave.chunked(into: 1000) {
                 try await { @RealmBackgroundActor in
-                    guard let targetWriterRealm = realmProvider.targetWriterRealm else { return }
-//                    debugPrint("!! save changes to record types", Set(chunk.map { $0.record.recordID.recordName.split(separator: ".").first! }), "total count", chunk.count, chunk.map { $0.record.recordID.recordName.split(separator: ".").last! })
+                    guard let targetWriterRealm = realmProvider.targetWriterRealm else {
+                        debugPrint("QSCloudKitSynchronizer >> error 1 \(realmProvider) == \(realmProvider.targetWriterRealm)")
+                        return
+                    }
+                    debugPrint("QSCloudKitSynchronizer >> !! save changes to record types", Set(chunk.map { $0.record.recordID.recordName.split(separator: ".").first! }), "total count", chunk.count, chunk.map { $0.record.recordID.recordName.split(separator: ".").last! })
                     await targetWriterRealm.asyncRefresh()
                     try await targetWriterRealm.asyncWrite { [weak self] in
-                        guard let self = self else { return }
+                        guard let self = self else {
+                            debugPrint("QSCloudKitSynchronizer >> error 2")
+                            return
+                        }
                         for (record, objectType, objectIdentifier, syncedEntityID, syncedEntityState, entityType) in chunk {
                             var object = targetWriterRealm.object(ofType: objectType, forPrimaryKey: objectIdentifier)
                             if object == nil {
+                                debugPrint("QSCloudKitSynchronizer >> save New record: \(objectIdentifier)")
                                 object = objectType.init()
                                 if let object {
                                     object.setValue(objectIdentifier, forKey: (objectType.primaryKey() ?? objectType.sharedSchema()?.primaryKeyProperty?.name)!)

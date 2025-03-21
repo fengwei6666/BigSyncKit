@@ -28,6 +28,8 @@ class FetchZoneChangesOperation: CloudKitSynchronizerOperation {
     
     var zoneResults = [CKRecordZone.ID: FetchZoneChangesOperationZoneResult]()
     
+    var forceSaveRecord = false
+    
 //    let dispatchQueue = DispatchQueue(label: "fetchZoneChangesDispatchQueue")
     weak var internalOperation: CKFetchRecordZoneChangesOperation?
     
@@ -38,6 +40,7 @@ class FetchZoneChangesOperation: CloudKitSynchronizerOperation {
         modelVersion: Int,
         ignoreDeviceIdentifier: String?,
         desiredKeys: [String]?,
+        forceSave: Bool = false,
         onResult: ((CKRecord?, CKRecord.ID?) async -> ())? = nil,
         completion: @escaping ([CKRecordZone.ID: FetchZoneChangesOperationZoneResult]) async -> ()
     ) {
@@ -48,6 +51,7 @@ class FetchZoneChangesOperation: CloudKitSynchronizerOperation {
         self.modelVersion = modelVersion
         self.ignoreDeviceIdentifier = ignoreDeviceIdentifier
         self.desiredKeys = desiredKeys
+        self.forceSaveRecord = forceSave
         self.onResult = onResult
         self.completion = completion
         
@@ -96,8 +100,9 @@ class FetchZoneChangesOperation: CloudKitSynchronizerOperation {
         operation.recordChangedBlock = { record in
             let ignoreDeviceIdentifier: String = self.ignoreDeviceIdentifier ?? " "
             debugPrint("QSCloudKitSynchronizer >> did fetch record: \(record.recordID.recordName) == \(record.recordType)")
+            NotificationCenter.default.post(name: .SynchronizerDidFetchRecord, object: record.recordID.recordName)
 
-            if ignoreDeviceIdentifier != record[CloudKitSynchronizer.deviceUUIDKey] as? String {
+            if ignoreDeviceIdentifier != record[CloudKitSynchronizer.deviceUUIDKey] as? String || self.forceSaveRecord {
                 if let version = record[CloudKitSynchronizer.modelCompatibilityVersionKey] as? Int,
                    self.modelVersion > 0 && version > self.modelVersion {
                     Task(priority: .background) { @BigSyncBackgroundActor in

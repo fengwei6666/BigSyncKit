@@ -291,6 +291,7 @@ extension CloudKitSynchronizer {
             
             serverChangeToken = token
             storedDatabaseToken = token
+//            forceSaveRecordOnce = false
             if syncMode == .sync {
                 try await uploadChanges()
             } else {
@@ -343,7 +344,7 @@ extension CloudKitSynchronizer {
     func fetchZoneChanges(_ zoneIDs: [CKRecordZone.ID], completion: @escaping (Error?) async throws -> ()) {
 //        debugPrint("# fetchZoneChanges(...)", zoneIDs)
         let changeRequestProcessor = ChangeRequestProcessor()
-        let operation = FetchZoneChangesOperation(database: database, zoneIDs: zoneIDs, zoneChangeTokens: activeZoneTokens, modelVersion: compatibilityVersion, ignoreDeviceIdentifier: deviceIdentifier, desiredKeys: nil) { [weak self] (downloadedRecord, deletedRecordID) in
+        let operation = FetchZoneChangesOperation(database: database, zoneIDs: zoneIDs, zoneChangeTokens: activeZoneTokens, modelVersion: compatibilityVersion, ignoreDeviceIdentifier: deviceIdentifier, desiredKeys: nil, forceSave: forceSaveRecordOnce) { [weak self] (downloadedRecord, deletedRecordID) in
             guard let self else { return }
             guard let zoneID = downloadedRecord?.recordID.zoneID ?? deletedRecordID?.zoneID else {
                 debugPrint("Unexpectedly found no downloaded record or deleted record ID")
@@ -688,7 +689,7 @@ extension CloudKitSynchronizer {
             return
         }
         
-        let operation = FetchZoneChangesOperation(database: database, zoneIDs: recordZoneIDs, zoneChangeTokens: activeZoneTokens, modelVersion: compatibilityVersion, ignoreDeviceIdentifier: deviceIdentifier, desiredKeys: ["recordID", CloudKitSynchronizer.deviceUUIDKey]) { @BigSyncBackgroundActor [weak self] zoneResults in
+        let operation = FetchZoneChangesOperation(database: database, zoneIDs: recordZoneIDs, zoneChangeTokens: activeZoneTokens, modelVersion: compatibilityVersion, ignoreDeviceIdentifier: deviceIdentifier, desiredKeys: ["recordID", CloudKitSynchronizer.deviceUUIDKey], forceSave: forceSaveRecordOnce) { @BigSyncBackgroundActor [weak self] zoneResults in
             guard let self = self else { return }
 //            var pendingZones = [CKRecordZone.ID]()
             var needsToRefetch = false
