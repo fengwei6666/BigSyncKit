@@ -132,6 +132,8 @@ public class BigSyncBackgroundWorker: BigSyncBackgroundWorkerBase {
                     case .alreadySyncing:
                         // Received when synchronize is called while there was an ongoing synchronization.
                         break
+                    case .notAllow:
+                        break
                     case .cancelled:
                         print("Sync error: \(error.localizedDescription) Synchronization was manually cancelled.")
                     case .higherModelVersionFound:

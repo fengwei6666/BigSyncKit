@@ -93,6 +93,8 @@ public class CloudKitSynchronizer: NSObject {
          *  Synchronization was manually cancelled.
          */
         case cancelled = 3
+        
+        case notAllow = 4
     }
     
     /// `CloudKitSynchronizer` can be configured to only download changes, never uploading local changes to CloudKit.
@@ -129,6 +131,8 @@ public class CloudKitSynchronizer: NSObject {
     
     /// Indicates whether the instance is currently synchronizing data.
     public internal(set) var syncing: Bool = false
+    
+    public var allowSyncing: Bool = true
     
     ///  Number of records that are sent in an upload operation.
     public var batchSize: Int = CloudKitSynchronizer.defaultBatchSize
@@ -237,6 +241,11 @@ public class CloudKitSynchronizer: NSObject {
     /// - Parameter completion: Completion block that receives an optional error. Could be a `SyncError`, `CKError`, or any other error found during synchronization.
     @BigSyncBackgroundActor
     @objc public func synchronize(completion: ((Error?) -> ())?) {
+        guard allowSyncing else {
+            completion?(SyncError.notAllow)
+            return
+        }
+        
         guard !syncing else {
             completion?(SyncError.alreadySyncing)
             return
