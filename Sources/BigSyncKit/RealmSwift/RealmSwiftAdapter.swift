@@ -196,6 +196,7 @@ actor RealmProvider {
 struct ResultsChangeSet {
     var insertions: [String: Set<String>] = [:] // schemaName -> Set of insertions
     var modifications: [String: Set<String>] = [:] // schemaName -> Set of modifications
+    var deletetions: [String: Set<String>] = [:] // schemaName -> Set of deletetions
 }
 
 public class RealmSwiftAdapter: NSObject, ModelAdapter {
@@ -511,12 +512,14 @@ public class RealmSwiftAdapter: NSObject, ModelAdapter {
         }
         
         let lastTrackedChangesAt = syncedEntityType.lastTrackedChangesAt ?? .distantPast
-        let createdPredicate = NSPredicate(format: "createDate > %@", lastTrackedChangesAt as NSDate)
-        let modifiedPredicate = NSPredicate(format: "lastModify > %@ AND createDate <= %@", lastTrackedChangesAt as NSDate, lastTrackedChangesAt as NSDate)
+        let createdPredicate = NSPredicate(format: "createDate > %@ AND destroy = \(false)", lastTrackedChangesAt as NSDate)
+        let modifiedPredicate = NSPredicate(format: "lastModify > %@ AND createDate <= %@ AND destroy = \(false)", lastTrackedChangesAt as NSDate, lastTrackedChangesAt as NSDate)
         let nextTrackedChangesAt = Date()
         
         let created = Array(targetReaderRealm.objects(objectClass).filter(createdPredicate))
         let modified = Array(targetReaderRealm.objects(objectClass).filter(modifiedPredicate))
+        
+        let deleted = Array(targetReaderRealm.objects(objectClass).filter("destroy = \(true)"))
         
         let primaryKey = objectClass.primaryKey() ?? objectClass.sharedSchema()?.primaryKeyProperty?.name ?? ""
         
@@ -538,6 +541,10 @@ public class RealmSwiftAdapter: NSObject, ModelAdapter {
             resultsChangeSet.modifications[schemaName, default: []]
                 .formUnion(modified.map { Self.getTargetObjectStringIdentifier(for: $0, usingPrimaryKey: primaryKey) })
         }
+        if !deleted.isEmpty {
+            resultsChangeSet.deletetions[schemaName, default: []]
+                .formUnion(deleted.map { Self.getTargetObjectStringIdentifier(for: $0, usingPrimaryKey: primaryKey) })
+        }
         
         // Persist the new lastTrackedChangesAt
         await persistenceRealm.asyncRefresh()
@@ -545,7 +552,7 @@ public class RealmSwiftAdapter: NSObject, ModelAdapter {
             syncedEntityType.lastTrackedChangesAt = nextTrackedChangesAt
         }
         
-        if !created.isEmpty || !modified.isEmpty {
+        if !created.isEmpty || !modified.isEmpty || !deleted.isEmpty {
 //            debugPrint("# created or modified non-empty, resultsChangeSetPublisher send...", created.count, modified.count, resultsChangeSet.insertions, resultsChangeSet.modifications)
             resultsChangeSetPublisher.send(())
         }
@@ -584,6 +591,19 @@ public class RealmSwiftAdapter: NSObject, ModelAdapter {
                 }
             }
         }
+        
+        for (schema, identifiers) in currentChangeSet.deletetions {
+            for chunk in Array(identifiers).chunked(into: 500) {
+                guard let persistenceRealm = realmProvider.persistenceRealm else { return }
+                await persistenceRealm.asyncRefresh()
+                try? await persistenceRealm.asyncWrite {
+                    for identifier in chunk {
+                        self.updateTracking(objectIdentifier: identifier, entityName: schema, inserted: false, modified: false, deleted: true, persistenceRealm: persistenceRealm)
+                    }
+                }
+            }
+        }
+
     }
     
     private func setupPublisherDebouncer() {
@@ -1582,7 +1602,7 @@ public class RealmSwiftAdapter: NSObject, ModelAdapter {
                     guard let persistenceRealm = syncRealmProvider?.syncPersistenceRealm else { return false }
                     guard let syncedEntity = Self.getSyncedEntity(objectIdentifier: identifier, realm: persistenceRealm) else {
                         debugPrint("Warning: No synced entity found for identifier", identifier)
-                        return false
+                        return true
                     }
                     return syncedEntity.entityState == .synced || syncedEntity.entityState == .new
                 }()

@@ -35,7 +35,7 @@ class ModifyRecordsOperation: CloudKitSynchronizerOperation {
     weak var internalOperation: CKModifyRecordsOperation?
         
     override func start() {
-        debugPrint("====== ckrecord will modify: \(records)")
+        debugPrint("====== ckrecord will modify: \(records) ==== \(recordIDsToDelete)")
 
         let operation = CKModifyRecordsOperation(recordsToSave: records, recordIDsToDelete: recordIDsToDelete)
         operation.savePolicy = .changedKeys
