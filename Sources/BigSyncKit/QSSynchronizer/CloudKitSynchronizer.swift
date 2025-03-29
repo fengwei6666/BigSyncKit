@@ -117,6 +117,8 @@ public class CloudKitSynchronizer: NSObject {
     /// iCloud container identifier.
     public let containerIdentifier: String?
     
+    public var container: CKContainer?
+    
     /// Adapter wrapping a `CKDatabase`. The synchronizer will run CloudKit operations on the given database.
     @BigSyncBackgroundActor
     public let database: CloudKitDatabaseAdapter
@@ -203,7 +205,7 @@ public class CloudKitSynchronizer: NSObject {
         if _deviceIdentifier == nil {
             _deviceIdentifier = deviceUUID
             if _deviceIdentifier == nil {
-                _deviceIdentifier = UUID().uuidString
+                _deviceIdentifier = UIDevice.current.identifierForVendor?.uuidString ?? UUID().uuidString
                 deviceUUID = _deviceIdentifier
             }
         }

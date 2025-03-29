@@ -357,6 +357,7 @@ public class RealmSwiftAdapter: NSObject, ModelAdapter {
                         case .update(let results, _, let insertions, let modifications):
                             var inserted = [String]()
                             var modified = [String]()
+                            var deleted = [String]()
                             for index in insertions {
                                 let object = results[index]
                                 let identifier = Self.getTargetObjectStringIdentifier(for: object, usingPrimaryKey: primaryKey)
@@ -365,7 +366,11 @@ public class RealmSwiftAdapter: NSObject, ModelAdapter {
                             for index in modifications {
                                 let object = results[index]
                                 let identifier = Self.getTargetObjectStringIdentifier(for: object, usingPrimaryKey: primaryKey)
-                                modified.append(identifier)
+                                if let value = object.value(forKey: "destroy") as? Bool, value {
+                                    deleted.append(identifier)
+                                } else {
+                                    modified.append(identifier)
+                                }                                
                             }
                             Task(priority: .background) { @BigSyncBackgroundActor [weak self] in
                                 guard let self else { return }
@@ -374,6 +379,9 @@ public class RealmSwiftAdapter: NSObject, ModelAdapter {
                                 }
                                 if !modified.isEmpty {
                                     resultsChangeSet.modifications[schema.className, default: []].formUnion(modified)
+                                }
+                                if !deleted.isEmpty {
+                                    resultsChangeSet.deletetions[schema.className, default: []].formUnion(deleted)
                                 }
                             }
 //                            if !insertions.isEmpty {                            debugPrint("# INSERT RECS", insertions.compactMap { results[$0].description.prefix(50) })                        }

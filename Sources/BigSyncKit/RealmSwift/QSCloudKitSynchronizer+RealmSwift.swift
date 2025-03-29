@@ -47,6 +47,7 @@ extension CloudKitSynchronizer {
             keyValueStore: userDefaultsAdapter,
             compatibilityVersion: compatibilityVersion
         )
+        synchronizer.container = container
         provider.beforeInitialSetup = {
             synchronizer.clearDeviceIdentifier()
         }

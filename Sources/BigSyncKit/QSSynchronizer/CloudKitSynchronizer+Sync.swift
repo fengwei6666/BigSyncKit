@@ -725,4 +725,30 @@ extension CloudKitSynchronizer {
             self.batchSize = self.batchSize + 5
         }
     }
+    
+    func resumeLongLivedOperationIfPossible() {
+        guard let container = container else { return }
+        container.fetchAllLongLivedOperationIDs { [weak self]( opeIDs, error) in
+            guard let self = self, error == nil, let ids = opeIDs else { return }
+            for id in ids {
+                container.fetchLongLivedOperation(withID: id, completionHandler: { [weak self](ope, error) in
+                    guard let self = self, error == nil else { return }
+                    if let modifyOp = ope as? CKModifyRecordsOperation {
+                        modifyOp.modifyRecordsCompletionBlock = { (_,_,_) in
+                            print("Resume modify records success!")
+                        }
+                        // The Apple's example code in doc(https://developer.apple.com/documentation/cloudkit/ckoperation/#1666033)
+                        // tells we add operation in container. But however it crashes on iOS 15 beta versions.
+                        // And the crash log tells us to "CKDatabaseOperations must be submitted to a CKDatabase".
+                        // So I guess there must be something changed in the daemon. We temperorily add this availabilty check.
+                        if #available(iOS 15, *) {
+                            self.database.add(modifyOp)
+                        } else {
+                            container.add(modifyOp)
+                        }
+                    }
+                })
+            }
+        }
+    }
 }
