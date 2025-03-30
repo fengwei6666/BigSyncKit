@@ -1260,6 +1260,9 @@ public class RealmSwiftAdapter: NSObject, ModelAdapter {
                 break
             }
         }
+        
+        guard let realmProvider = realmProvider else { return }
+        try await applyPendingRelationships(realmProvider: realmProvider)
     }
     
     @BigSyncBackgroundActor

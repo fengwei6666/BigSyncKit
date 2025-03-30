@@ -108,6 +108,7 @@ extension CloudKitSynchronizer {
         resetActiveTokens()
         
         uploadRetries = 0
+        forceSaveRecordOnce = false
         
         for adapter in modelAdapters {
             await adapter.didFinishImport(with: error)
@@ -291,7 +292,6 @@ extension CloudKitSynchronizer {
             
             serverChangeToken = token
             storedDatabaseToken = token
-//            forceSaveRecordOnce = false
             if syncMode == .sync {
                 try await uploadChanges()
             } else {
