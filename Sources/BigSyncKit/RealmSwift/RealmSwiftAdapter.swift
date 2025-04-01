@@ -1293,6 +1293,9 @@ public class RealmSwiftAdapter: NSObject, ModelAdapter {
         }
         
         for relationship in Array(pendingRelationships) {
+            guard !relationship.isInvalidated else {
+                continue
+            }
             let entity = relationship.forSyncedEntity
             
             guard let syncedEntity = entity,
